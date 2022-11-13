@@ -28,9 +28,9 @@
 #include <vector>
 using namespace std;
 
-const int C = 3; // capacidade do carro
-const int V = 6; // número de visitantes
-const int N = 3; // número de voltas
+const int C = 2; // capacidade do carro
+const int V = 4; // número de visitantes
+const int N = 8; // número de voltas
 
 class MonitorCarro {
 private:
@@ -121,6 +121,7 @@ void passageiro(int id) {
   while (true) {
     if (!montanharussa.entra_carro(id)) {
       pthread_barrier_wait(&barrier);
+      printf("Visitante %d saiu do parque\n", id);
       break;
     }
     montanharussa.sai_carro(id);
@@ -128,6 +129,10 @@ void passageiro(int id) {
     pthread_barrier_wait(&barrier); // Todos os visitantes devem ter dado uma
     // volta antes de começar a próxima
   }
+  // Dessa forma que está implementada, o numero de voltas dada deve ser
+  // relativo ao numero de visitantes e a capacidade do carro
+  // Ex: 4 visitantes e 2 lugares no carro, cada visitante dá 2 voltas
+  // teremos 8 voltas no total
 }
 
 int main() {
