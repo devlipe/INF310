@@ -28,18 +28,20 @@
 #include <vector>
 using namespace std;
 
-const int C = 5;  // capacidade do carro
-const int V = 10; // número de visitantes
-const int N = 3;  // número de voltas
+const int C = 3; // capacidade do carro
+const int V = 6; // número de visitantes
+const int N = 3; // número de voltas
 
 class MonitorCarro {
 private:
   int passageiros = 0;
   mutex m;
-  bool running = false;
+  bool podeSair = false;
+  bool podeEntrar = false;
+  bool closed = false;
   condition_variable na_fila;
   condition_variable no_carro;
-  condition_variable enxendo_carro;
+  condition_variable enchendo_carro;
   condition_variable esvaziando_carro;
 
 public:
@@ -47,21 +49,26 @@ public:
 
   ~MonitorCarro() {}
 
-  void entra_carro(int id) {
+  bool entra_carro(int id) {
     unique_lock<mutex> lock(m);
 
-    na_fila.wait(lock, [this] { return !running; });
+    na_fila.wait(lock, [this] { return podeEntrar && passageiros < C; });
+    if (closed) {
+      printf("Visitante %d não entrou no carro porque o parque fechou\n", id);
+      return false;
+    }
     printf("    Visitante %d entrou no carro\n", id);
     passageiros++;
     if (passageiros == C) {
-      enxendo_carro.notify_one();
+      enchendo_carro.notify_one();
     }
+
+    return true;
   }
 
   void sai_carro(int id) {
     unique_lock<mutex> lock(m);
-
-    no_carro.wait(lock, [this] { return running; });
+    no_carro.wait(lock, [this] { return podeSair; });
     passageiros--;
     printf("    Visitante %d saiu do carro\n", id);
     if (passageiros == 0) {
@@ -71,19 +78,30 @@ public:
 
   void espera_encher(int v) {
     unique_lock<mutex> lock(m);
-    printf("Carro esperando encher");
-    enxendo_carro.wait(lock, [this] { return passageiros == C; });
-    printf("Carro encheu - Iniciando volta %d", v);
-    running = true;
+
+    printf("Carro esperando encher\n");
+    podeEntrar = true;
+    podeSair = false;
+    na_fila.notify_all();
+    enchendo_carro.wait(lock, [this] { return passageiros == C; });
+
+    printf("Carro encheu - Iniciando volta %d\n", v);
   }
 
-  void espera_esvaziar() {
+  void espera_esvaziar(bool close_park) {
     unique_lock<mutex> lock(m);
-    printf("Carro esperando esvaziar");
+    printf("Carro esperando esvaziar\n");
+    podeSair = true;
+    podeEntrar = false;
+    no_carro.notify_all();
     esvaziando_carro.wait(lock, [this] { return passageiros == 0; });
-    printf("Carro esvaziou - Finalizando volta");
-    running = false;
-    na_fila.notify_all();
+    printf("Carro esvaziou - Finalizando volta\n");
+    if (close_park) {
+      printf("**** Parque Fechado ****\n");
+      closed = true;
+      podeEntrar = true;
+      na_fila.notify_all();
+    }
   }
 };
 
@@ -91,31 +109,40 @@ MonitorCarro montanharussa;
 pthread_barrier_t barrier;
 
 void carro() {
-  for (int i = 0; i < N; ++i) {
+  for (int i = 1; i <= N; ++i) {
     montanharussa.espera_encher(i);
     /* dá volta */
-    montanharussa.espera_esvaziar();
+    bool close = i == N;
+    montanharussa.espera_esvaziar(close);
   }
 }
 
 void passageiro(int id) {
-  for (int i = 0; i < N; i++) {
-    montanharussa.entra_carro(id);
+  while (true) {
+    if (!montanharussa.entra_carro(id)) {
+      pthread_barrier_wait(&barrier);
+      break;
+    }
     montanharussa.sai_carro(id);
+
     pthread_barrier_wait(&barrier); // Todos os visitantes devem ter dado uma
-                                    // volta antes de começar a próxima
+    // volta antes de começar a próxima
   }
 }
 
 int main() {
   pthread_barrier_init(&barrier, NULL, V);
   vector<thread> threads;
-  threads.push_back(thread(carro));
+  printf("**** Parque Aberto ****\n");
+
+  thread car(carro);
 
   for (int i = 0; i < V; i++) {
     threads.push_back(thread(passageiro, i));
   }
 
+  car.join();
+  pthread_barrier_destroy(&barrier);
   for (auto &t : threads) {
     t.join();
   }
