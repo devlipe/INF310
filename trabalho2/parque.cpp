@@ -136,6 +136,8 @@ void passageiro(int id) {
 }
 
 int main() {
+  // O numero de visgtantes também deve ser múltiplo da capacidade do Carro
+  assert(V % C == 0);
   // Usamos esse assert para garantir que todas os visitantes darão o memso
   // numero de voltas Para tanto, o numero de voltas deve ser multiplo do numero
   // de visitantes/ capacidade do carro
