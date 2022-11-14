@@ -20,6 +20,7 @@
    todos os passageiros da volta n-1 já saíram do carro.
 */
 
+#include <assert.h>
 #include <condition_variable>
 #include <iostream>
 #include <mutex>
@@ -28,9 +29,9 @@
 #include <vector>
 using namespace std;
 
-const int C = 2; // capacidade do carro
-const int V = 4; // número de visitantes
-const int N = 8; // número de voltas
+const int C = 20;   // capacidade do carro
+const int V = 1000; // número de visitantes
+const int N = 150;  // número de voltas
 
 class MonitorCarro {
 private:
@@ -103,6 +104,10 @@ public:
       na_fila.notify_all();
     }
   }
+  bool is_closed() {
+    unique_lock<mutex> lock(m);
+    return closed;
+  }
 };
 
 MonitorCarro montanharussa;
@@ -120,22 +125,21 @@ void carro() {
 void passageiro(int id) {
   while (true) {
     if (!montanharussa.entra_carro(id)) {
-      pthread_barrier_wait(&barrier);
       printf("Visitante %d saiu do parque\n", id);
       break;
     }
     montanharussa.sai_carro(id);
 
     pthread_barrier_wait(&barrier); // Todos os visitantes devem ter dado uma
-    // volta antes de começar a próxima
+                                    // volta antes de começar a próxima
   }
-  // Dessa forma que está implementada, o numero de voltas dada deve ser
-  // relativo ao numero de visitantes e a capacidade do carro
-  // Ex: 4 visitantes e 2 lugares no carro, cada visitante dá 2 voltas
-  // teremos 8 voltas no total
 }
 
 int main() {
+  // Usamos esse assert para garantir que todas os visitantes darão o memso
+  // numero de voltas Para tanto, o numero de voltas deve ser multiplo do numero
+  // de visitantes/ capacidade do carro
+  assert(N % (V / C) == 0);
   pthread_barrier_init(&barrier, NULL, V);
   vector<thread> threads;
   printf("**** Parque Aberto ****\n");
